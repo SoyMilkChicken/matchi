@@ -5,72 +5,37 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EventCard } from "@/components/events/event-card";
 import { EVENT_TYPES } from "@/lib/types";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Events",
   description: "Discover and join local events in your community",
 };
 
-// Mock data for development
-const mockEvents = [
-  {
-    id: "1",
-    title: "Hotpot Night at Sichuan House",
-    description: "Join us for a delicious hotpot dinner! We'll be trying the spicy Sichuan style.",
-    event_type: "food" as const,
-    date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-    location_address: "Sichuan House, 123 Main St",
-    max_attendees: 12,
-    tags: ["Beginner Friendly", "Indoor"],
-    is_public: true,
-    image_url: null,
-    status: "active" as const,
-    host: { id: "h1", name: "Sarah Chen", avatar_url: null },
-    attendee_count: 8,
-    attendees: [
-      { id: "a1", name: "John", avatar_url: null },
-      { id: "a2", name: "Emily", avatar_url: null },
-      { id: "a3", name: "Mike", avatar_url: null },
-    ],
-  },
-  {
-    id: "2",
-    title: "Pickup Basketball @ Co-Rec",
-    description: "Casual pickup game, all skill levels welcome. Bring water!",
-    event_type: "sports" as const,
-    date: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(),
-    location_address: "Co-Rec Center, Court 3",
-    max_attendees: 10,
-    tags: ["Beginner Friendly", "Indoor"],
-    is_public: true,
-    image_url: null,
-    status: "active" as const,
-    host: { id: "h2", name: "Marcus Johnson", avatar_url: null },
-    attendee_count: 6,
-    attendees: [
-      { id: "a4", name: "Alex", avatar_url: null },
-      { id: "a5", name: "Chris", avatar_url: null },
-    ],
-  },
-  {
-    id: "3",
-    title: "Study Group: STAT 512",
-    description: "Weekly study session for Stats 512. We'll go over homework and prep for exams.",
-    event_type: "study" as const,
-    date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    location_address: "WALC 1055",
-    max_attendees: 8,
-    tags: ["Free"],
-    is_public: true,
-    image_url: null,
-    status: "active" as const,
-    host: { id: "h3", name: "Wei Zhang", avatar_url: null },
-    attendee_count: 4,
-    attendees: [{ id: "a6", name: "Lisa", avatar_url: null }],
-  },
-];
+export default async function EventsPage() {
+  const supabase = await createClient();
 
-export default function EventsPage() {
+  // Fetch real events from Supabase
+  const { data: events } = await supabase
+    .from("events")
+    .select(`
+      *,
+      host:users!host_id (id, name, avatar_url),
+      attendees:attendees (
+        user:users (id, name, avatar_url)
+      )
+    `)
+    .eq("status", "active")
+    .gte("date", new Date().toISOString())
+    .order("date", { ascending: true });
+
+  // Transform data to match EventWithDetails type
+  const eventsWithDetails = (events || []).map((event) => ({
+    ...event,
+    attendees: event.attendees?.map((a: { user: { id: string; name: string; avatar_url: string | null } }) => a.user) || [],
+    attendee_count: event.attendees?.length || 0,
+  }));
+
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Search Bar */}
@@ -112,17 +77,17 @@ export default function EventsPage() {
 
       {/* Events List */}
       <div className="space-y-4">
-        {mockEvents.map((event) => (
+        {eventsWithDetails.map((event) => (
           <EventCard key={event.id} event={event} />
         ))}
       </div>
 
-      {/* Empty State (for when there are no events) */}
-      {mockEvents.length === 0 && (
+      {/* Empty State */}
+      {eventsWithDetails.length === 0 && (
         <div className="py-12 text-center">
           <p className="text-lg text-muted-foreground">No events found</p>
           <p className="text-sm text-muted-foreground">
-            Try adjusting your filters or create your own event!
+            Be the first to create an event in your community!
           </p>
         </div>
       )}

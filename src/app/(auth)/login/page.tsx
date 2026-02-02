@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -36,11 +37,22 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
-      // TODO: Implement Supabase OTP
-      console.log("Sending OTP to:", data.email);
+      const supabase = createClient();
+
+      // Send OTP via email
+      const { error } = await supabase.auth.signInWithOtp({
+        email: data.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) throw error;
+
       toast.success("Verification code sent to your email!");
       setShowOTP(true);
     } catch (error) {
+      console.error("Login error:", error);
       toast.error("Failed to send verification code. Please try again.");
     } finally {
       setIsLoading(false);
@@ -50,11 +62,21 @@ export default function LoginPage() {
   const verifyOTP = async () => {
     setIsLoading(true);
     try {
-      // TODO: Implement Supabase OTP verification
-      console.log("Verifying OTP:", otp);
+      const supabase = createClient();
+
+      // Verify OTP
+      const { error } = await supabase.auth.verifyOtp({
+        email: getValues("email"),
+        token: otp,
+        type: "email",
+      });
+
+      if (error) throw error;
+
       toast.success("Welcome back!");
       router.push("/events");
     } catch (error) {
+      console.error("Verification error:", error);
       toast.error("Invalid code. Please try again.");
     } finally {
       setIsLoading(false);

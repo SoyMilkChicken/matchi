@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { EVENT_TYPES, EVENT_TAGS } from "@/lib/types";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 const createEventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(80),
@@ -64,11 +65,44 @@ export default function CreateEventPage() {
   const onSubmit = async (data: CreateEventForm) => {
     setIsSubmitting(true);
     try {
-      // TODO: Implement actual event creation with Supabase
-      console.log("Creating event:", { ...data, tags: selectedTags });
+      const supabase = createClient();
+
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        toast.error("You must be logged in to create events");
+        router.push("/login");
+        return;
+      }
+
+      // Combine date and time
+      const eventDateTime = new Date(`${data.date}T${data.time}`);
+
+      // Insert event
+      const { data: newEvent, error } = await supabase
+        .from("events")
+        .insert({
+          host_id: user.id,
+          title: data.title,
+          description: data.description,
+          event_type: data.event_type,
+          date: eventDateTime.toISOString(),
+          location_address: data.location_address,
+          max_attendees: data.max_attendees,
+          tags: selectedTags,
+          is_public: data.is_public,
+          status: "active",
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
       toast.success("Event created successfully!");
-      router.push("/events");
+      router.push(`/events/${newEvent.id}`);
     } catch (error) {
+      console.error("Create event error:", error);
       toast.error("Failed to create event. Please try again.");
     } finally {
       setIsSubmitting(false);

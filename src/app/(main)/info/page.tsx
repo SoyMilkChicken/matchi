@@ -5,59 +5,61 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { INFO_CATEGORIES } from "@/lib/types";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Info Hub",
   description: "Insider knowledge for newcomers - housing, food, classes, and more",
 };
 
-// Mock data for activity counts
-const categoryCounts: Record<string, number> = {
-  housing: 234,
-  classes: 89,
-  food: 156,
-  transport: 42,
-  money: 67,
-  campus: 120,
-};
+export default async function InfoHubPage() {
+  const supabase = await createClient();
 
-// Mock recent activity
-const recentPosts = [
-  {
-    id: "1",
-    title: "Best affordable apartments near campus",
-    category: "housing",
-    author: "Sarah K.",
-    upvotes: 45,
-    timeAgo: "2 hours ago",
-  },
-  {
-    id: "2",
-    title: "CS 251 study tips from a TA",
-    category: "classes",
-    author: "Mike T.",
-    upvotes: 32,
-    timeAgo: "5 hours ago",
-  },
-  {
-    id: "3",
-    title: "Hidden gem: cheap lunch spots under $8",
-    category: "food",
-    author: "Lisa W.",
-    upvotes: 67,
-    timeAgo: "1 day ago",
-  },
-  {
-    id: "4",
-    title: "How to get around without a car",
-    category: "transport",
-    author: "David L.",
-    upvotes: 28,
-    timeAgo: "2 days ago",
-  },
-];
+  // Get all posts to count per category
+  const { data: allPosts } = await supabase
+    .from("info_posts")
+    .select("category");
 
-export default function InfoHubPage() {
+  // Calculate category counts
+  const categoryCounts: Record<string, number> = {};
+  INFO_CATEGORIES.forEach((cat) => {
+    categoryCounts[cat.value] = allPosts?.filter((p) => p.category === cat.value).length || 0;
+  });
+
+  // Get recent posts with author info
+  const { data: recentPosts } = await supabase
+    .from("info_posts")
+    .select(`
+      *,
+      author:users!author_id (id, name)
+    `)
+    .order("created_at", { ascending: false })
+    .limit(4);
+
+  // Format recent posts
+  const formattedPosts = (recentPosts || []).map((post) => {
+    const createdAt = new Date(post.created_at);
+    const now = new Date();
+    const diffMs = now.getTime() - createdAt.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    let timeAgo: string;
+    if (diffHours < 1) {
+      timeAgo = "Just now";
+    } else if (diffHours < 24) {
+      timeAgo = `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    } else {
+      timeAgo = `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+    }
+
+    return {
+      ...post,
+      author: post.author?.name || "Anonymous",
+      timeAgo,
+    };
+  });
+
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
@@ -116,35 +118,41 @@ export default function InfoHubPage() {
         </div>
 
         <div className="space-y-3">
-          {recentPosts.map((post) => {
-            const category = INFO_CATEGORIES.find((c) => c.value === post.category);
-            return (
-              <Card key={post.id} className="border-none shadow-sm">
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="flex-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span>{category?.icon}</span>
-                      <Badge variant="secondary" className="text-xs">
-                        {category?.label}
-                      </Badge>
+          {formattedPosts.length > 0 ? (
+            formattedPosts.map((post) => {
+              const category = INFO_CATEGORIES.find((c) => c.value === post.category);
+              return (
+                <Card key={post.id} className="border-none shadow-sm">
+                  <CardContent className="flex items-center justify-between p-4">
+                    <div className="flex-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <span>{category?.icon}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {category?.label}
+                        </Badge>
+                      </div>
+                      <h3 className="font-medium text-foreground hover:text-primary">
+                        <Link href={`/info/${post.category}/${post.id}`}>
+                          {post.title}
+                        </Link>
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        by {post.author} · {post.timeAgo}
+                      </p>
                     </div>
-                    <h3 className="font-medium text-foreground hover:text-primary">
-                      <Link href={`/info/${post.category}/${post.id}`}>
-                        {post.title}
-                      </Link>
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      by {post.author} · {post.timeAgo}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <ThumbsUp className="h-4 w-4" />
-                    <span className="text-sm">{post.upvotes}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <ThumbsUp className="h-4 w-4" />
+                      <span className="text-sm">{post.upvotes || 0}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          ) : (
+            <div className="py-8 text-center">
+              <p className="text-muted-foreground">No posts yet. Be the first to contribute!</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

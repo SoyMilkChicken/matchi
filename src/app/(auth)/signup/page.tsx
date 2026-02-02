@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 
 const signupSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -42,11 +43,25 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupForm) => {
     setIsLoading(true);
     try {
-      // TODO: Implement Supabase signup with OTP
-      console.log("Creating account:", data);
+      const supabase = createClient();
+
+      // Send OTP
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: data.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            name: data.name,
+          },
+        },
+      });
+
+      if (otpError) throw otpError;
+
       toast.success("Verification code sent to your email!");
       setShowOTP(true);
     } catch (error) {
+      console.error("Signup error:", error);
       toast.error("Failed to create account. Please try again.");
     } finally {
       setIsLoading(false);
@@ -56,11 +71,42 @@ export default function SignupPage() {
   const verifyOTP = async () => {
     setIsLoading(true);
     try {
-      // TODO: Implement Supabase OTP verification
-      console.log("Verifying OTP:", otp);
+      const supabase = createClient();
+
+      // Verify OTP
+      const { data: authData, error: verifyError } = await supabase.auth.verifyOtp({
+        email: getValues("email"),
+        token: otp,
+        type: "email",
+      });
+
+      if (verifyError) throw verifyError;
+
+      // Create user profile
+      if (authData.user) {
+        const isEduEmail = getValues("email").endsWith(".edu");
+
+        const { error: profileError } = await supabase
+          .from("users")
+          .insert({
+            id: authData.user.id,
+            email: getValues("email"),
+            name: getValues("name"),
+            is_edu_verified: isEduEmail,
+            interests: [],
+            looking_for: [],
+          });
+
+        if (profileError && profileError.code !== "23505") {
+          // Ignore duplicate key error (user already exists)
+          throw profileError;
+        }
+      }
+
       toast.success("Account created! Welcome to Matchi!");
       router.push("/events");
     } catch (error) {
+      console.error("Verification error:", error);
       toast.error("Invalid code. Please try again.");
     } finally {
       setIsLoading(false);
